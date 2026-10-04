@@ -3,7 +3,11 @@ import prisma from '@/lib/prisma'
 export async function getOrSeedLocations() {
   try {
     let locations = await prisma.location.findMany({
-      include: { products: true },
+      include: {
+        products: {
+          orderBy: { updatedAt: 'desc' }
+        }
+      },
       orderBy: [
         { section: 'asc' },
         { shelf: 'asc' },
