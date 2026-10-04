@@ -89,8 +89,8 @@ export default async function OperatorDashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {activeOrders.map(order => {
-              const pendingCount = order.items.filter(i => !i.picked).length
+            {activeOrders.map((order: any) => {
+              const pendingCount = order.items.filter((i: any) => !i.picked).length
               const totalCount = order.items.length
               const isStarted = order.status === 'IN_PROGRESS'
 
@@ -140,7 +140,7 @@ export default async function OperatorDashboard() {
                     {/* Preview of items */}
                     <div className="text-xs text-slate-400 mb-6 space-y-1">
                       <span className="font-semibold text-slate-300 block mb-1">Itens inclusos:</span>
-                      {order.items.slice(0, 3).map(item => (
+                      {order.items.slice(0, 3).map((item: any) => (
                         <div key={item.id} className="flex items-center justify-between text-slate-400">
                           <span className="truncate max-w-[180px]">{item.product.name}</span>
                           <span className="font-mono text-slate-500">
@@ -179,7 +179,7 @@ export default async function OperatorDashboard() {
             Ordens Concluídas Recentemente
           </h2>
           <div className="bg-[#12141F] border border-[#20273A] rounded-2xl divide-y divide-[#1D2233] overflow-hidden">
-            {completedOrders.map(order => (
+            {completedOrders.map((order: any) => (
               <div key={order.id} className="p-4 flex items-center justify-between flex-wrap gap-2 text-xs">
                 <div className="flex items-center gap-3">
                   <span className="w-2 h-2 rounded-full bg-emerald-400"></span>

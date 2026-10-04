@@ -66,9 +66,9 @@ export default async function AdminOrdersPage() {
                   </td>
                 </tr>
               ) : (
-                orders.map(order => {
+                orders.map((order: any) => {
                   const total = order.items.length
-                  const picked = order.items.filter(i => i.picked).length
+                  const picked = order.items.filter((i: any) => i.picked).length
                   const percent = total > 0 ? Math.round((picked / total) * 100) : 0
 
                   return (

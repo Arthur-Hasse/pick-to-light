@@ -27,13 +27,13 @@ export default async function AdminDashboard() {
     console.error('Erro ao buscar dados do AdminDashboard no Prisma:', err)
   }
 
-  const pendingOrders = orders.filter(o => o.status === 'PENDING').length
-  const inProgressOrders = orders.filter(o => o.status === 'IN_PROGRESS').length
-  const completedOrders = orders.filter(o => o.status === 'COMPLETED').length
+  const pendingOrders = orders.filter((o: any) => o.status === 'PENDING').length
+  const inProgressOrders = orders.filter((o: any) => o.status === 'IN_PROGRESS').length
+  const completedOrders = orders.filter((o: any) => o.status === 'COMPLETED').length
 
   // Build grid map for the rack (Shelves 1..5, Boxes 1..4)
-  const rackMap: Record<string, typeof locations[0] | undefined> = {}
-  locations.forEach(loc => {
+  const rackMap: Record<string, any> = {}
+  locations.forEach((loc: any) => {
     rackMap[`${loc.shelf}-${loc.box}`] = loc
   })
 
@@ -80,7 +80,7 @@ export default async function AdminDashboard() {
           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Peças Cadastradas</div>
           <div className="text-3xl font-black text-cyan-400 mt-2">{products.length}</div>
           <div className="text-xs text-slate-400 mt-2 font-mono">
-            Posições: {locations.filter(l => l.products.length > 0).length} / {locations.length}
+            Posições: {locations.filter((l: any) => (l.products?.length || 0) > 0).length} / {locations.length}
           </div>
         </div>
 

@@ -32,7 +32,7 @@ export default async function ProductsPage({
     console.error('Erro ao buscar produtos/locações no Prisma:', err)
   }
 
-  const preselectedLocation = locationId ? locations.find(l => l.id === locationId) : null
+  const preselectedLocation = locationId ? locations.find((l: any) => l.id === locationId) : null
 
   return (
     <div className="space-y-6">
@@ -122,7 +122,7 @@ export default async function ProductsPage({
                     </td>
                   </tr>
                 ) : (
-                  products.map(product => {
+                  products.map((product: any) => {
                     const meta = parseProductMeta(product.description)
                     const isLow = meta.stock <= 5
                     const locLabel = product.location 
