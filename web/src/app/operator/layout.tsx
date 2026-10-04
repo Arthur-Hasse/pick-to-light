@@ -13,11 +13,17 @@ export default async function OperatorLayout({
   const role = cookieStore.get('userRole')?.value
   const userId = cookieStore.get('userId')?.value
 
-  if (role !== 'OPERATOR') {
+  const normalizedRole = role?.toUpperCase()
+  if (normalizedRole !== 'OPERATOR' && normalizedRole !== 'ADMIN') {
     redirect('/')
   }
 
-  const user = userId ? await prisma.user.findUnique({ where: { id: userId } }) : null
+  let user = null
+  try {
+    user = userId ? await prisma.user.findUnique({ where: { id: userId } }) : null
+  } catch (err) {
+    console.warn('Falha ao buscar usuário no OperatorLayout:', err)
+  }
 
   return (
     <div className="min-h-screen bg-[#0B0D14] flex flex-col text-slate-100">

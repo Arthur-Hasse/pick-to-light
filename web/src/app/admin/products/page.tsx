@@ -11,19 +11,26 @@ export default async function ProductsPage({
 }) {
   const { locationId } = await searchParams
 
-  const products = await prisma.product.findMany({
-    include: { location: true },
-    orderBy: { name: 'asc' }
-  })
+  let products: any[] = []
+  let locations: any[] = []
 
-  const locations = await prisma.location.findMany({
-    include: { products: true },
-    orderBy: [
-      { section: 'asc' },
-      { shelf: 'asc' },
-      { box: 'asc' }
-    ]
-  })
+  try {
+    products = await prisma.product.findMany({
+      include: { location: true },
+      orderBy: { name: 'asc' }
+    })
+
+    locations = await prisma.location.findMany({
+      include: { products: true },
+      orderBy: [
+        { section: 'asc' },
+        { shelf: 'asc' },
+        { box: 'asc' }
+      ]
+    })
+  } catch (err) {
+    console.error('Erro ao buscar produtos/locações no Prisma:', err)
+  }
 
   const preselectedLocation = locationId ? locations.find(l => l.id === locationId) : null
 

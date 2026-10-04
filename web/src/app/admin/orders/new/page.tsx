@@ -3,15 +3,22 @@ import Link from 'next/link'
 import OrderForm from './OrderForm'
 
 export default async function NewOrderPage() {
-  const products = await prisma.product.findMany({
-    include: { location: true },
-    orderBy: { name: 'asc' }
-  })
+  let products: any[] = []
+  let operators: any[] = []
 
-  const operators = await prisma.user.findMany({
-    where: { role: 'OPERATOR' },
-    orderBy: { name: 'asc' }
-  })
+  try {
+    products = await prisma.product.findMany({
+      include: { location: true },
+      orderBy: { name: 'asc' }
+    })
+
+    operators = await prisma.user.findMany({
+      where: { role: 'OPERATOR' },
+      orderBy: { name: 'asc' }
+    })
+  } catch (err) {
+    console.error('Erro ao buscar produtos/operadores:', err)
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">

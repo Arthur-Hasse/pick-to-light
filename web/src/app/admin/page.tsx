@@ -3,20 +3,29 @@ import Link from 'next/link'
 import { parseProductMeta } from '@/lib/productHelper'
 
 export default async function AdminDashboard() {
-  const usersCount = await prisma.user.count({ where: { role: 'OPERATOR' } })
-  const products = await prisma.product.findMany({
-    include: { location: true }
-  })
-  const orders = await prisma.order.findMany({
-    include: { items: true }
-  })
-  const locations = await prisma.location.findMany({
-    include: { products: true },
-    orderBy: [
-      { shelf: 'asc' },
-      { box: 'asc' }
-    ]
-  })
+  let usersCount = 1
+  let products: any[] = []
+  let orders: any[] = []
+  let locations: any[] = []
+
+  try {
+    usersCount = await prisma.user.count({ where: { role: 'OPERATOR' } })
+    products = await prisma.product.findMany({
+      include: { location: true }
+    })
+    orders = await prisma.order.findMany({
+      include: { items: true }
+    })
+    locations = await prisma.location.findMany({
+      include: { products: true },
+      orderBy: [
+        { shelf: 'asc' },
+        { box: 'asc' }
+      ]
+    })
+  } catch (err) {
+    console.error('Erro ao buscar dados do AdminDashboard no Prisma:', err)
+  }
 
   const pendingOrders = orders.filter(o => o.status === 'PENDING').length
   const inProgressOrders = orders.filter(o => o.status === 'IN_PROGRESS').length

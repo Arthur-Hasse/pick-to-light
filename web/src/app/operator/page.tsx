@@ -6,35 +6,41 @@ export default async function OperatorDashboard() {
   const cookieStore = await cookies()
   const userId = cookieStore.get('userId')?.value
 
-  // Buscar pedidos atribuídos a este operador
-  const activeOrders = await prisma.order.findMany({
-    where: { 
-      operatorId: userId || '',
-      status: { not: 'COMPLETED' }
-    },
-    include: {
-      items: {
-        include: {
-          product: {
-            include: { location: true }
+  let activeOrders: any[] = []
+  let completedOrders: any[] = []
+
+  try {
+    activeOrders = await prisma.order.findMany({
+      where: { 
+        ...(userId ? { operatorId: userId } : {}),
+        status: { not: 'COMPLETED' }
+      },
+      include: {
+        items: {
+          include: {
+            product: {
+              include: { location: true }
+            }
           }
         }
+      },
+      orderBy: {
+        createdAt: 'asc'
       }
-    },
-    orderBy: {
-      createdAt: 'asc'
-    }
-  })
+    })
 
-  const completedOrders = await prisma.order.findMany({
-    where: { 
-      operatorId: userId || '',
-      status: 'COMPLETED' 
-    },
-    include: { items: true },
-    orderBy: { updatedAt: 'desc' },
-    take: 3
-  })
+    completedOrders = await prisma.order.findMany({
+      where: { 
+        ...(userId ? { operatorId: userId } : {}),
+        status: 'COMPLETED' 
+      },
+      include: { items: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 3
+    })
+  } catch (err) {
+    console.error('Erro ao carregar pedidos do operador:', err)
+  }
 
   return (
     <div className="space-y-8">

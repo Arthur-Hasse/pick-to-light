@@ -2,19 +2,25 @@ import prisma from '@/lib/prisma'
 import Link from 'next/link'
 
 export default async function AdminOrdersPage() {
-  const orders = await prisma.order.findMany({
-    include: {
-      operator: true,
-      items: {
-        include: {
-          product: {
-            include: { location: true }
+  let orders: any[] = []
+
+  try {
+    orders = await prisma.order.findMany({
+      include: {
+        operator: true,
+        items: {
+          include: {
+            product: {
+              include: { location: true }
+            }
           }
         }
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  })
+      },
+      orderBy: { createdAt: 'desc' }
+    })
+  } catch (err) {
+    console.error('Erro ao buscar ordens no Prisma:', err)
+  }
 
   return (
     <div className="space-y-6">

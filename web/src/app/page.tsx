@@ -20,13 +20,24 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
 
-    const formData = new FormData()
-    formData.append('username', username)
-    formData.append('password', password)
+    try {
+      const formData = new FormData()
+      formData.append('username', username)
+      formData.append('password', password)
 
-    const res = await login(formData)
-    if (res?.error) {
-      setError(res.error)
+      const res = await login(formData)
+      if (res?.error) {
+        setError(res.error)
+        setLoading(false)
+      } else if (res?.redirectUrl) {
+        // Redirecionamento completo do navegador garante a leitura imediata dos cookies
+        window.location.href = res.redirectUrl
+      } else {
+        window.location.href = '/admin'
+      }
+    } catch (err: any) {
+      console.error('Erro na submissão de login:', err)
+      setError(err?.message || 'Erro de conexão com o servidor. Tente novamente.')
       setLoading(false)
     }
   }
