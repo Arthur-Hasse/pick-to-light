@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  username  String   @unique
+  password  String   // Em produção usaríamos hash
+  role      String   @default("OPERATOR") // ADMIN ou OPERATOR
+  orders    Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Location {
+  id        String    @id @default(cuid())
+  section   String    // Ex: "A"
+  shelf     String    // Ex: "1"
+  box       String    // Ex: "2"
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  @@unique([section, shelf, box])
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  locationId  String?
+  location    Location?   @relation(fields: [locationId], references: [id])
+  orderItems  OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  status     String      @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  operatorId String?
+  operator   User?       @relation(fields: [operatorId], references: [id])
+  items      OrderItem[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  picked    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
