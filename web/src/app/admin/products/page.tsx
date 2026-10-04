@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma'
 import Link from 'next/link'
 import { parseProductMeta } from '@/lib/productHelper'
+import { getOrSeedLocations } from '@/lib/locationHelper'
 import { DeleteProductButton, ClearAllProductsButton } from './ProductDeleteButtons'
 import ProductForm from './ProductForm'
 
@@ -19,18 +20,11 @@ export default async function ProductsPage({
       include: { location: true },
       orderBy: { name: 'asc' }
     })
-
-    locations = await prisma.location.findMany({
-      include: { products: true },
-      orderBy: [
-        { section: 'asc' },
-        { shelf: 'asc' },
-        { box: 'asc' }
-      ]
-    })
   } catch (err) {
-    console.error('Erro ao buscar produtos/locações no Prisma:', err)
+    console.error('Erro ao buscar produtos no Prisma:', err)
   }
+
+  locations = await getOrSeedLocations()
 
   const preselectedLocation = locationId ? locations.find((l: any) => l.id === locationId) : null
 

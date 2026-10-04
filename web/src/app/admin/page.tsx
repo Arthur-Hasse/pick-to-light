@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma'
 import Link from 'next/link'
 import { parseProductMeta } from '@/lib/productHelper'
+import { getOrSeedLocations } from '@/lib/locationHelper'
 
 export default async function AdminDashboard() {
   let usersCount = 1
@@ -16,16 +17,11 @@ export default async function AdminDashboard() {
     orders = await prisma.order.findMany({
       include: { items: true }
     })
-    locations = await prisma.location.findMany({
-      include: { products: true },
-      orderBy: [
-        { shelf: 'asc' },
-        { box: 'asc' }
-      ]
-    })
   } catch (err) {
     console.error('Erro ao buscar dados do AdminDashboard no Prisma:', err)
   }
+
+  locations = await getOrSeedLocations()
 
   const pendingOrders = orders.filter((o: any) => o.status === 'PENDING').length
   const inProgressOrders = orders.filter((o: any) => o.status === 'IN_PROGRESS').length

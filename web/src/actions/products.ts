@@ -31,19 +31,48 @@ export async function createProduct(formData: FormData) {
   })
 
   try {
+    let finalLocationId = locationId
+
+    // Garante que a posição física existe no banco mesmo em deploys sem seed
+    if (locationId) {
+      let existingLoc = null
+      try {
+        existingLoc = await prisma.location.findUnique({ where: { id: locationId } })
+      } catch (e) {
+        console.warn('Busca de localização:', e)
+      }
+
+      if (!existingLoc) {
+        const match = locationId.match(/loc-([A-Z])-(\d+)-(\d+)/)
+        const section = match ? match[1] : 'A'
+        const shelf = match ? match[2] : '1'
+        const box = match ? match[3] : '1'
+
+        const upserted = await prisma.location.upsert({
+          where: {
+            section_shelf_box: { section, shelf, box }
+          },
+          update: {},
+          create: { section, shelf, box }
+        })
+        finalLocationId = upserted.id
+      }
+    }
+
     await prisma.product.create({
       data: {
         name,
         description: formattedDescription,
-        locationId
+        locationId: finalLocationId
       }
     })
     
     revalidatePath('/admin/products')
     revalidatePath('/admin')
     return { success: true }
-  } catch (error) {
-    return { error: 'Erro ao cadastrar produto' }
+  } catch (error: any) {
+    console.error('Erro ao cadastrar produto:', error)
+    return { error: 'Erro ao cadastrar produto: ' + (error?.message || 'Falha no banco') }
   }
 }
 

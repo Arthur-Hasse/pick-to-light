@@ -20,6 +20,10 @@ export default async function NewOrderPage() {
     console.error('Erro ao buscar produtos/operadores:', err)
   }
 
+  if (operators.length === 0) {
+    operators = [{ id: 'operator-seed-id', name: 'João Operador (Bancada PTL)', username: 'operador1' }]
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between">

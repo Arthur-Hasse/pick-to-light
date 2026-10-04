@@ -151,12 +151,23 @@ export default function ProductForm({
           className="w-full bg-[#181D2D] border border-[#2A334B] text-white px-3.5 py-2.5 rounded-xl text-sm focus:outline-none focus:border-cyan-500 font-mono"
         >
           <option value="">Selecione uma caixa...</option>
-          {locations.map(loc => {
-            const isOccupied = loc.products.length > 0
+          {(locations && locations.length > 0 ? locations : Array.from({ length: 20 }, (_, idx) => {
+            const shelf = (Math.floor(idx / 4) + 1).toString()
+            const box = ((idx % 4) + 1).toString()
+            return {
+              id: `loc-A-${shelf}-${box}`,
+              section: 'A',
+              shelf,
+              box,
+              products: []
+            }
+          })).map(loc => {
+            const isOccupied = (loc.products?.length || 0) > 0
             const isCurrent = loc.id === preselectedLocationId
+            const productName = isOccupied ? loc.products[0]?.name : ''
             return (
               <option key={loc.id} value={loc.id} className="bg-[#181D2D] text-white">
-                {isCurrent ? '★ [SELECIONADA] ' : ''}Estante {loc.section} &gt; Nível {loc.shelf} &gt; Caixa {loc.box} {isOccupied ? `(Ocupado: ${loc.products[0].name})` : '(Livre)'}
+                {isCurrent ? '★ [SELECIONADA] ' : ''}Estante {loc.section} &gt; Nível {loc.shelf} &gt; Caixa {loc.box} {isOccupied ? `(Ocupado: ${productName})` : '(Livre)'}
               </option>
             )
           })}

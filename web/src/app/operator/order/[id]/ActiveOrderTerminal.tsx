@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { pickItem, resetOrder } from '@/actions/orders'
@@ -50,6 +50,13 @@ export default function ActiveOrderTerminal({
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
   
+  // ESP32 Wi-Fi Hardware Integration (3 LEDs + 3 Botões)
+  const [espIp, setEspIp] = useState<string>('')
+  const [espConnected, setEspConnected] = useState<boolean>(false)
+  const [espTesting, setEspTesting] = useState<boolean>(false)
+  const [espActiveBox, setEspActiveBox] = useState<number | null>(null)
+  const [espMessage, setEspMessage] = useState<string>('')
+
   // Scale verification modal state (for Edilson's mode)
   const [activeScaleItem, setActiveScaleItem] = useState<OrderItemType | null>(null)
   const [measuredWeight, setMeasuredWeight] = useState<string>('')
@@ -75,6 +82,88 @@ export default function ActiveOrderTerminal({
   const pendingCount = totalItems - pickedCount
   const isCompleted = pickedCount === totalItems && totalItems > 0
 
+  // Carrega IP salvo do ESP32 no localStorage
+  useEffect(() => {
+    const savedIp = localStorage.getItem('ptl_esp32_ip')
+    if (savedIp) {
+      setEspIp(savedIp)
+      checkEspStatus(savedIp)
+    }
+  }, [])
+
+  // Função para testar conexão com o ESP32
+  const checkEspStatus = async (ipToUse: string) => {
+    const cleanIp = ipToUse.replace(/^https?:\/\//, '').replace(/\/$/, '').trim()
+    if (!cleanIp) {
+      setEspMessage('Insira o IP do ESP32')
+      return
+    }
+    setEspTesting(true)
+    setEspMessage('Testando conexão...')
+    try {
+      const res = await fetch(`http://${cleanIp}/status`, { 
+        signal: AbortSignal.timeout(3000),
+        mode: 'cors'
+      })
+      if (res.ok) {
+        setEspConnected(true)
+        localStorage.setItem('ptl_esp32_ip', cleanIp)
+        setEspMessage(`Conectado ao ESP32 (${cleanIp})`)
+      } else {
+        setEspConnected(false)
+        setEspMessage('ESP32 não respondeu.')
+      }
+    } catch {
+      setEspConnected(false)
+      setEspMessage('Falha ao conectar. Verifique se o ESP32 está na mesma rede.')
+    } finally {
+      setEspTesting(false)
+    }
+  }
+
+  // Aciona LED no ESP32
+  const triggerEspLed = async (box: number) => {
+    const cleanIp = espIp.replace(/^https?:\/\//, '').replace(/\/$/, '').trim()
+    if (!cleanIp) return
+    try {
+      await fetch(`http://${cleanIp}/led?box=${box}`, { mode: 'cors' })
+      setEspActiveBox(box)
+    } catch (e) {
+      console.warn('Erro ao acender LED no ESP32:', e)
+    }
+  }
+
+  // Apaga todos os LEDs no ESP32
+  const clearEspLeds = async () => {
+    const cleanIp = espIp.replace(/^https?:\/\//, '').replace(/\/$/, '').trim()
+    if (!cleanIp) return
+    try {
+      await fetch(`http://${cleanIp}/clear`, { mode: 'cors' })
+      setEspActiveBox(null)
+    } catch (e) {
+      console.warn('Erro ao apagar LEDs no ESP32:', e)
+    }
+  }
+
+  // Sincronização automática do próximo item pendente com o LED do ESP32
+  const pendingItems = order.items.filter(i => !i.picked)
+  const nextItem = pendingItems[0]
+
+  useEffect(() => {
+    if (!espConnected || !espIp) return
+
+    if (nextItem?.product?.location) {
+      const box = parseInt(nextItem.product.location.box, 10)
+      if (box >= 1 && box <= 3) {
+        triggerEspLed(box)
+      } else {
+        clearEspLeds()
+      }
+    } else {
+      clearEspLeds()
+    }
+  }, [nextItem?.id, espConnected, espIp, pendingItems.length])
+
   // Action for Mode 1 (Arthur): Physical/Virtual Button press on Pick to Light rack
   const handleButtonPressPick = async (item: OrderItemType) => {
     if (item.picked) return
@@ -85,6 +174,38 @@ export default function ActiveOrderTerminal({
     }
     setLoadingItemId(null)
   }
+
+  // Monitora o botão físico pressionado no ESP32
+  useEffect(() => {
+    if (!espConnected || !espIp) return
+
+    const cleanIp = espIp.replace(/^https?:\/\//, '').replace(/\/$/, '').trim()
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`http://${cleanIp}/status`, { 
+          signal: AbortSignal.timeout(1500),
+          mode: 'cors' 
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.lastButtonPressed && data.lastButtonPressed >= 1 && data.lastButtonPressed <= 3) {
+            const pressedBox = data.lastButtonPressed.toString()
+            const itemToPick = order.items.find(
+              i => !i.picked && i.product.location?.box === pressedBox
+            )
+            if (itemToPick) {
+              setEspActiveBox(null)
+              handleButtonPressPick(itemToPick)
+            }
+          }
+        }
+      } catch {
+        // Silencioso em caso de timeout
+      }
+    }, 800)
+
+    return () => clearInterval(timer)
+  }, [espConnected, espIp, order.items])
 
   // Open scale modal for Mode 2 (Edilson)
   const handleOpenScaleModal = (item: OrderItemType) => {
@@ -250,6 +371,105 @@ export default function ActiveOrderTerminal({
         >
           {resetting ? 'Reiniciando...' : '↺ Reiniciar Teste'}
         </button>
+      </div>
+
+      {/* ESP32 Wi-Fi Hardware Integration Control Bar */}
+      <div className="bg-[#12141F] border border-[#20273A] rounded-2xl p-4 shadow-xl">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-3.5 h-3.5 rounded-full ${espConnected ? 'bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.8)] animate-pulse' : 'bg-rose-500'}`} />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-bold tracking-wider uppercase text-white">
+                  ESP32 Pick to Light (Wi-Fi)
+                </span>
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase ${
+                  espConnected 
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                    : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                }`}>
+                  {espConnected ? 'Conectado (Online)' : 'Desconectado'}
+                </span>
+                {espActiveBox && (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                    💡 LED Caixa {espActiveBox} Aceso
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                {espMessage || 'Insira o IP exibido no Monitor Serial do Arduino e clique em Conectar'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative">
+              <input
+                type="text"
+                value={espIp}
+                onChange={(e) => setEspIp(e.target.value)}
+                placeholder="Ex: 192.168.1.50"
+                className="bg-[#181D2D] border border-[#2A334B] text-white px-3 py-1.5 rounded-xl font-mono text-xs placeholder-slate-500 focus:outline-none focus:border-cyan-500 w-40"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => checkEspStatus(espIp)}
+              disabled={espTesting || !espIp}
+              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all cursor-pointer disabled:opacity-50"
+            >
+              {espTesting ? 'Conectando...' : 'Conectar'}
+            </button>
+
+            {espConnected && (
+              <div className="flex items-center gap-1.5 border-l border-[#263147] pl-2 ml-1">
+                <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">Testar:</span>
+                <button
+                  type="button"
+                  onClick={() => triggerEspLed(1)}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-mono border transition-all cursor-pointer ${
+                    espActiveBox === 1
+                      ? 'bg-cyan-500 text-black font-bold border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]'
+                      : 'bg-[#181D2D] border-[#29324B] text-slate-300 hover:border-cyan-500'
+                  }`}
+                >
+                  LED 1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => triggerEspLed(2)}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-mono border transition-all cursor-pointer ${
+                    espActiveBox === 2
+                      ? 'bg-cyan-500 text-black font-bold border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]'
+                      : 'bg-[#181D2D] border-[#29324B] text-slate-300 hover:border-cyan-500'
+                  }`}
+                >
+                  LED 2
+                </button>
+                <button
+                  type="button"
+                  onClick={() => triggerEspLed(3)}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-mono border transition-all cursor-pointer ${
+                    espActiveBox === 3
+                      ? 'bg-cyan-500 text-black font-bold border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]'
+                      : 'bg-[#181D2D] border-[#29324B] text-slate-300 hover:border-cyan-500'
+                  }`}
+                >
+                  LED 3
+                </button>
+                <button
+                  type="button"
+                  onClick={clearEspLeds}
+                  className="px-2 py-1 rounded-lg text-[11px] font-mono bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 transition-all cursor-pointer"
+                  title="Apagar todos os LEDs"
+                >
+                  Apagar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Main Grid: Interactive Rack (Left/Top) + Item Action List (Right/Bottom) */}
