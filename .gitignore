@@ -21,7 +21,7 @@ venv/
 ENV/
 
 # Database files
-# dev.db
+!web/prisma/dev.db
 *.sqlite3
 
 # Logs
