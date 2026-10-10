@@ -82,16 +82,24 @@ export default function ActiveOrderTerminal({
   const pendingCount = totalItems - pickedCount
   const isCompleted = pickedCount === totalItems && totalItems > 0
 
-  // Carrega IP salvo do ESP32 no localStorage
+  // 1. Registra a ordem atual na API da nuvem ao abrir a tela
+  useEffect(() => {
+    fetch('/api/esp32', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_active_order', orderId: order.id })
+    }).catch(() => {})
+  }, [order.id])
+
+  // Carrega IP salvo do ESP32 no localStorage (se o usuário quiser modo local)
   useEffect(() => {
     const savedIp = localStorage.getItem('ptl_esp32_ip')
     if (savedIp) {
       setEspIp(savedIp)
-      checkEspStatus(savedIp)
     }
   }, [])
 
-  // Função para testar conexão com o ESP32
+  // Função para testar conexão local com o ESP32 (opcional)
   const checkEspStatus = async (ipToUse: string) => {
     const cleanIp = ipToUse.replace(/^https?:\/\//, '').replace(/\/$/, '').trim()
     if (!cleanIp) {
@@ -99,7 +107,7 @@ export default function ActiveOrderTerminal({
       return
     }
     setEspTesting(true)
-    setEspMessage('Testando conexão...')
+    setEspMessage('Testando conexão local...')
     try {
       const res = await fetch(`http://${cleanIp}/status`, { 
         signal: AbortSignal.timeout(3000),
@@ -108,40 +116,56 @@ export default function ActiveOrderTerminal({
       if (res.ok) {
         setEspConnected(true)
         localStorage.setItem('ptl_esp32_ip', cleanIp)
-        setEspMessage(`Conectado ao ESP32 (${cleanIp})`)
+        setEspMessage(`Conectado ao ESP32 local (${cleanIp})`)
       } else {
         setEspConnected(false)
-        setEspMessage('ESP32 não respondeu.')
+        setEspMessage('ESP32 local não respondeu.')
       }
     } catch {
       setEspConnected(false)
-      setEspMessage('Falha ao conectar. Verifique se o ESP32 está na mesma rede.')
+      setEspMessage('Falha ao conectar via IP local. Usando integração Nuvem (Vercel).')
     } finally {
       setEspTesting(false)
     }
   }
 
-  // Aciona LED no ESP32
+  // Aciona LED no ESP32 (via Nuvem + Local se configurado)
   const triggerEspLed = async (box: number) => {
+    setEspActiveBox(box)
+    // Sincroniza via API na nuvem (Vercel)
+    fetch('/api/esp32', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_led', box, orderId: order.id })
+    }).catch(() => {})
+
+    // Se houver IP local configurado, dispara local também
     const cleanIp = espIp.replace(/^https?:\/\//, '').replace(/\/$/, '').trim()
-    if (!cleanIp) return
-    try {
-      await fetch(`http://${cleanIp}/led?box=${box}`, { mode: 'cors' })
-      setEspActiveBox(box)
-    } catch (e) {
-      console.warn('Erro ao acender LED no ESP32:', e)
+    if (cleanIp) {
+      try {
+        await fetch(`http://${cleanIp}/led?box=${box}`, { mode: 'cors' })
+      } catch (e) {
+        console.warn('Erro ao acender LED local no ESP32:', e)
+      }
     }
   }
 
   // Apaga todos os LEDs no ESP32
   const clearEspLeds = async () => {
+    setEspActiveBox(null)
+    fetch('/api/esp32', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clear_leds' })
+    }).catch(() => {})
+
     const cleanIp = espIp.replace(/^https?:\/\//, '').replace(/\/$/, '').trim()
-    if (!cleanIp) return
-    try {
-      await fetch(`http://${cleanIp}/clear`, { mode: 'cors' })
-      setEspActiveBox(null)
-    } catch (e) {
-      console.warn('Erro ao apagar LEDs no ESP32:', e)
+    if (cleanIp) {
+      try {
+        await fetch(`http://${cleanIp}/clear`, { mode: 'cors' })
+      } catch (e) {
+        console.warn('Erro ao apagar LEDs locais no ESP32:', e)
+      }
     }
   }
 
@@ -150,8 +174,6 @@ export default function ActiveOrderTerminal({
   const nextItem = pendingItems[0]
 
   useEffect(() => {
-    if (!espConnected || !espIp) return
-
     if (nextItem?.product?.location) {
       const box = parseInt(nextItem.product.location.box, 10)
       if (box >= 1 && box <= 3) {
@@ -162,7 +184,7 @@ export default function ActiveOrderTerminal({
     } else {
       clearEspLeds()
     }
-  }, [nextItem?.id, espConnected, espIp, pendingItems.length])
+  }, [nextItem?.id, pendingItems.length])
 
   // Action for Mode 1 (Arthur): Physical/Virtual Button press on Pick to Light rack
   const handleButtonPressPick = async (item: OrderItemType) => {
@@ -175,37 +197,43 @@ export default function ActiveOrderTerminal({
     setLoadingItemId(null)
   }
 
-  // Monitora o botão físico pressionado no ESP32
+  // Monitora o status do ESP32 e eventos de botão físico (Nuvem ou Local)
   useEffect(() => {
-    if (!espConnected || !espIp) return
+    let lastHandledBtn: number | null = null
 
-    const cleanIp = espIp.replace(/^https?:\/\//, '').replace(/\/$/, '').trim()
     const timer = setInterval(async () => {
       try {
-        const res = await fetch(`http://${cleanIp}/status`, { 
-          signal: AbortSignal.timeout(1500),
-          mode: 'cors' 
-        })
+        // Consulta o status na Nuvem (Vercel)
+        const res = await fetch('/api/esp32', { signal: AbortSignal.timeout(2000) })
         if (res.ok) {
           const data = await res.json()
-          if (data.lastButtonPressed && data.lastButtonPressed >= 1 && data.lastButtonPressed <= 3) {
-            const pressedBox = data.lastButtonPressed.toString()
-            const itemToPick = order.items.find(
-              i => !i.picked && i.product.location?.box === pressedBox
-            )
-            if (itemToPick) {
-              setEspActiveBox(null)
-              handleButtonPressPick(itemToPick)
-            }
+
+          // Se o ESP32 deu sinal na nuvem
+          if (data.espOnline) {
+            setEspConnected(true)
+            setEspMessage('Conectado à Nuvem (Vercel) • ESP32 Sincronizado')
+          } else if (!espIp) {
+            setEspConnected(false)
+            setEspMessage('Aguardando ESP32 conectar ao Wi-Fi...')
+          }
+
+          if (data.activeBox && data.activeBox >= 1 && data.activeBox <= 3) {
+            setEspActiveBox(data.activeBox)
+          }
+
+          // Se um botão foi registrado pelo backend, atualiza o pedido
+          if (data.lastButtonPressed && data.lastButtonPressed !== lastHandledBtn) {
+            lastHandledBtn = data.lastButtonPressed
+            router.refresh()
           }
         }
       } catch {
         // Silencioso em caso de timeout
       }
-    }, 800)
+    }, 1000)
 
     return () => clearInterval(timer)
-  }, [espConnected, espIp, order.items])
+  }, [order.id])
 
   // Open scale modal for Mode 2 (Edilson)
   const handleOpenScaleModal = (item: OrderItemType) => {
