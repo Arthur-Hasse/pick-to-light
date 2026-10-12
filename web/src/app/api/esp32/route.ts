@@ -154,23 +154,23 @@ export async function POST(req: NextRequest) {
           // Busca o item não coletado daquela caixa na ordem ativa
           const orderToUse = currentOrderId
             ? await prisma.order.findUnique({
-                where: { id: currentOrderId },
-                include: {
-                  items: {
-                    where: { picked: false },
-                    include: { product: { include: { location: true } } }
-                  }
+              where: { id: currentOrderId },
+              include: {
+                items: {
+                  where: { picked: false },
+                  include: { product: { include: { location: true } } }
                 }
-              })
+              }
+            })
             : await prisma.order.findFirst({
-                where: { status: { in: ['IN_PROGRESS', 'PENDING'] } },
-                include: {
-                  items: {
-                    where: { picked: false },
-                    include: { product: { include: { location: true } } }
-                  }
+              where: { status: { in: ['IN_PROGRESS', 'PENDING'] } },
+              include: {
+                items: {
+                  where: { picked: false },
+                  include: { product: { include: { location: true } } }
                 }
-              })
+              }
+            })
 
           if (orderToUse) {
             const item = orderToUse.items.find(
@@ -179,6 +179,15 @@ export async function POST(req: NextRequest) {
             if (item) {
               await pickItem(item.id)
               pickedItem = item
+
+              // Imediatamente determina a PRÓXIMA caixa da fila para responder na mesma requisição!
+              const remaining = orderToUse.items.filter(i => i.id !== item.id)
+              if (remaining.length > 0 && remaining[0].product?.location?.box) {
+                const nBox = parseInt(remaining[0].product.location.box, 10)
+                if (nBox >= 1 && nBox <= 3) {
+                  nextActiveBox = nBox
+                }
+              }
             }
           }
         }
@@ -186,9 +195,20 @@ export async function POST(req: NextRequest) {
         console.error('Erro ao dar baixa via botão físico:', e)
       }
 
+      // Atualiza o estado da memória com a próxima caixa
+      activeBoxState = {
+        1: nextActiveBox === 1,
+        2: nextActiveBox === 2,
+        3: nextActiveBox === 3
+      }
+
       return NextResponse.json({
         success: true,
         pressedBox,
+        activeBox: nextActiveBox, // Responde imediatamente com o próximo LED!
+        box1: nextActiveBox === 1,
+        box2: nextActiveBox === 2,
+        box3: nextActiveBox === 3,
         pickedItemId: pickedItem?.id || null
       }, {
         headers: {
