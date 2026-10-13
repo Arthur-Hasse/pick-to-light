@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     let targetBox = 0
 
     try {
-      // 1. Tenta buscar o próximo item da ordem aberta no terminal
+      // 1. Tenta buscar a ordem atualmente visualizada pelo operador
       let activeOrder = null
       if (currentOrderId) {
         activeOrder = await prisma.order.findUnique({
@@ -35,23 +35,31 @@ export async function GET(req: NextRequest) {
             }
           }
         })
+
+        // Se a ordem foi concluída ou não tem itens pendentes, limpa currentOrderId
+        if (!activeOrder || activeOrder.status === 'COMPLETED' || activeOrder.items.length === 0) {
+          activeOrder = null
+          currentOrderId = null
+        }
       }
 
-      // 2. Se não encontrou por currentOrderId, busca a primeira ordem em andamento
-      if (!activeOrder || activeOrder.items.length === 0) {
+      // 2. Se não encontrou por currentOrderId, busca APENAS ordens que o operador já INICIOU (IN_PROGRESS)!
+      // NUNCA acende LEDs para ordens PENDING (criadas pelo admin mas ainda não abertas pelo operador)
+      if (!activeOrder) {
         activeOrder = await prisma.order.findFirst({
-          where: { status: { in: ['IN_PROGRESS', 'PENDING'] } },
+          where: { status: 'IN_PROGRESS' },
           include: {
             items: {
               where: { picked: false },
               include: { product: { include: { location: true } } },
               orderBy: { createdAt: 'asc' }
             }
-          }
+          },
+          orderBy: { updatedAt: 'desc' } // Ordem mais recente aberta/iniciada
         })
       }
 
-      // 3. Descobre qual é a caixa do próximo item
+      // 3. Descobre qual é a caixa do próximo item não coletado da ordem ativa
       if (activeOrder && activeOrder.items.length > 0) {
         const nextItem = activeOrder.items[0]
         if (nextItem.product?.location?.box) {
@@ -65,14 +73,12 @@ export async function GET(req: NextRequest) {
       console.error('Erro ao consultar banco no poll do ESP32:', e)
     }
 
-    // Se o banco apontou uma caixa, atualiza o estado
+    // Se encontramos uma caixa ativa para a ordem em andamento
     if (targetBox > 0) {
       activeBoxState = { 1: targetBox === 1, 2: targetBox === 2, 3: targetBox === 3 }
     } else {
-      // Caso contrário, respeita comandos manuais se existirem
-      if (activeBoxState[1]) targetBox = 1
-      else if (activeBoxState[2]) targetBox = 2
-      else if (activeBoxState[3]) targetBox = 3
+      // Se não há nenhuma ordem em andamento, garante que TODOS OS LEDS FIQUEM APAGADOS!
+      activeBoxState = { 1: false, 2: false, 3: false }
     }
 
     return NextResponse.json({
@@ -90,7 +96,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Consulta vinda da interface web para saber o status geral
-  const isEspOnline = (Date.now() - lastEspHeartbeat) < 6000
+  const isEspOnline = (Date.now() - lastEspHeartbeat) < 10000
   let currentActiveBox = 0
   if (activeBoxState[1]) currentActiveBox = 1
   else if (activeBoxState[2]) currentActiveBox = 2
@@ -146,31 +152,35 @@ export async function POST(req: NextRequest) {
       lastEspHeartbeat = Date.now()
 
       let pickedItem = null
+      let nextActiveBox = 0
 
       try {
         if (orderItemId) {
           await pickItem(orderItemId)
         } else {
-          // Busca o item não coletado daquela caixa na ordem ativa
+          // Busca a ordem ativa: prioriza currentOrderId, senão a ordem IN_PROGRESS mais recente
           const orderToUse = currentOrderId
             ? await prisma.order.findUnique({
-              where: { id: currentOrderId },
-              include: {
-                items: {
-                  where: { picked: false },
-                  include: { product: { include: { location: true } } }
+                where: { id: currentOrderId },
+                include: {
+                  items: {
+                    where: { picked: false },
+                    include: { product: { include: { location: true } } },
+                    orderBy: { createdAt: 'asc' }
+                  }
                 }
-              }
-            })
+              })
             : await prisma.order.findFirst({
-              where: { status: { in: ['IN_PROGRESS', 'PENDING'] } },
-              include: {
-                items: {
-                  where: { picked: false },
-                  include: { product: { include: { location: true } } }
-                }
-              }
-            })
+                where: { status: 'IN_PROGRESS' }, // APENAS IN_PROGRESS!
+                include: {
+                  items: {
+                    where: { picked: false },
+                    include: { product: { include: { location: true } } },
+                    orderBy: { createdAt: 'asc' }
+                  }
+                },
+                orderBy: { updatedAt: 'desc' }
+              })
 
           if (orderToUse) {
             const item = orderToUse.items.find(
@@ -180,7 +190,7 @@ export async function POST(req: NextRequest) {
               await pickItem(item.id)
               pickedItem = item
 
-              // Imediatamente determina a PRÓXIMA caixa da fila para responder na mesma requisição!
+              // Imediatamente determina a PRÓXIMA caixa da fila para responder na mesma requisição
               const remaining = orderToUse.items.filter(i => i.id !== item.id)
               if (remaining.length > 0 && remaining[0].product?.location?.box) {
                 const nBox = parseInt(remaining[0].product.location.box, 10)

@@ -71,7 +71,7 @@ export default function ActiveOrderTerminal({
   // Map order items by location: shelf-box -> item
   const orderItemsByLocation: Record<string, OrderItemType> = {}
   order.items.forEach(item => {
-    if (item.product.location) {
+    if (item.product?.location) {
       const key = `${item.product.location.shelf}-${item.product.location.box}`
       orderItemsByLocation[key] = item
     }
@@ -536,7 +536,7 @@ export default function ActiveOrderTerminal({
                     const orderItem = orderItemsByLocation[slotKey]
                     const isPending = orderItem && !orderItem.picked
                     const isPicked = orderItem && orderItem.picked
-                    const meta = orderItem ? parseProductMeta(orderItem.product.description) : null
+                    const meta = orderItem?.product ? parseProductMeta(orderItem.product.description) : null
 
                     return (
                       <div
@@ -575,7 +575,7 @@ export default function ActiveOrderTerminal({
                           {orderItem ? (
                             <>
                               <div className={`font-bold text-xs truncate ${isPending ? 'text-white' : 'text-slate-400'}`}>
-                                {orderItem.product.name}
+                                {orderItem.product?.name || 'Item'}
                               </div>
 
                               {/* 7-Segment style quantity display on the box */}
@@ -683,7 +683,7 @@ export default function ActiveOrderTerminal({
 
             <div className="divide-y divide-[#20273A] space-y-3">
               {order.items.map(item => {
-                const meta = parseProductMeta(item.product.description)
+                const meta = parseProductMeta(item.product?.description)
                 const expectedWeight = item.quantity * meta.weightGrams
 
                 return (
@@ -698,12 +698,12 @@ export default function ActiveOrderTerminal({
                         <div className="flex items-center gap-2">
                           <span className={`w-2 h-2 rounded-full ${item.picked ? 'bg-emerald-600' : 'bg-emerald-400 animate-pulse'}`} />
                           <h3 className={`font-bold text-sm ${item.picked ? 'line-through text-slate-400' : 'text-white'}`}>
-                            {item.product.name}
+                            {item.product?.name || 'Item'}
                           </h3>
                         </div>
 
                         <div className="text-xs text-slate-400 mt-0.5 font-mono">
-                          {item.product.location ? (
+                          {item.product?.location ? (
                             <span className="text-cyan-400 font-bold">
                               Gaveta {item.product.location.section}-{item.product.location.shelf}-{item.product.location.box}
                             </span>
@@ -846,7 +846,7 @@ export default function ActiveOrderTerminal({
                 <button
                   type="button"
                   onClick={() => {
-                    const expected = (activeScaleItem.quantity * parseProductMeta(activeScaleItem.product.description).weightGrams).toFixed(1)
+                    const expected = (activeScaleItem.quantity * parseProductMeta(activeScaleItem.product?.description).weightGrams).toFixed(1)
                     handleWeightChange(expected)
                   }}
                   className="px-3 py-2 bg-[#1A253A] hover:bg-[#202F4D] border border-cyan-500/40 text-cyan-300 rounded-lg text-xs font-semibold transition-all text-center"
@@ -857,7 +857,7 @@ export default function ActiveOrderTerminal({
                 <button
                   type="button"
                   onClick={() => {
-                    const expected = activeScaleItem.quantity * parseProductMeta(activeScaleItem.product.description).weightGrams
+                    const expected = activeScaleItem.quantity * parseProductMeta(activeScaleItem.product?.description).weightGrams
                     const wrong = (expected + 15).toFixed(1)
                     handleWeightChange(wrong)
                   }}
