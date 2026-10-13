@@ -401,6 +401,25 @@ export default function ActiveOrderTerminal({
         </button>
       </div>
 
+      {/* Banner de Ordem Concluída */}
+      {isCompleted && (
+        <div className="bg-gradient-to-r from-emerald-950/80 to-teal-950/80 border-2 border-emerald-500/50 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-2xl animate-fade-in">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🎉</span>
+            <div>
+              <h3 className="font-black text-white text-base">Ordem de Serviço Concluída com Sucesso!</h3>
+              <p className="text-xs text-emerald-300 mt-0.5">Todas as peças foram coletadas e a ordem foi arquivada nas finalizadas.</p>
+            </div>
+          </div>
+          <Link 
+            href="/operator" 
+            className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-all text-center uppercase tracking-wider"
+          >
+            Voltar para Ordens &rarr;
+          </Link>
+        </div>
+      )}
+
       {/* ESP32 Wi-Fi Hardware Integration Control Bar */}
       <div className="bg-[#12141F] border border-[#20273A] rounded-2xl p-4 shadow-xl">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">

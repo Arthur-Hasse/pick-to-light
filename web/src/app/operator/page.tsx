@@ -36,7 +36,7 @@ export default async function OperatorDashboard() {
       },
       include: { items: true },
       orderBy: { updatedAt: 'desc' },
-      take: 3
+      take: 20
     })
   } catch (err) {
     console.error('Erro ao carregar pedidos do operador:', err)

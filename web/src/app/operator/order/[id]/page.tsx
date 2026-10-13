@@ -24,32 +24,46 @@ export default async function ActiveOrderPage({ params }: { params: Promise<{ id
     redirect('/operator')
   }
 
-  // 1. Ao abrir o terminal de coleta, pausa outras ordens ativas para não haver conflito de LEDs
-  try {
-    await prisma.order.updateMany({
-      where: {
-        status: 'IN_PROGRESS',
-        id: { not: id }
-      },
-      data: { status: 'PENDING' }
-    })
+  // 1. Verifica se todos os itens já foram concluídos
+  const allPicked = order.items.length > 0 && order.items.every(i => i.picked)
 
-    // 2. Define esta ordem aberta como IN_PROGRESS
-    if (order.status !== 'COMPLETED') {
-      await prisma.order.update({
-        where: { id },
-        data: {
+  try {
+    if (allPicked) {
+      // Se todos os itens já foram coletados, garante o status COMPLETED
+      if (order.status !== 'COMPLETED') {
+        await prisma.order.update({
+          where: { id },
+          data: { status: 'COMPLETED', updatedAt: new Date() }
+        })
+        order.status = 'COMPLETED'
+      }
+    } else {
+      // Se ainda há itens pendentes, pausa outras ordens
+      await prisma.order.updateMany({
+        where: {
           status: 'IN_PROGRESS',
-          updatedAt: new Date()
-        }
+          id: { not: id }
+        },
+        data: { status: 'PENDING' }
       })
-      order.status = 'IN_PROGRESS'
+
+      // E marca esta ordem aberta como IN_PROGRESS
+      if (order.status !== 'IN_PROGRESS') {
+        await prisma.order.update({
+          where: { id },
+          data: {
+            status: 'IN_PROGRESS',
+            updatedAt: new Date()
+          }
+        })
+        order.status = 'IN_PROGRESS'
+      }
     }
   } catch (err) {
-    console.error('Erro ao atualizar status da ordem para IN_PROGRESS:', err)
+    console.error('Erro ao gerenciar status da ordem no ActiveOrderPage:', err)
   }
 
-  // 3. Garante que as 20 posições da estante estejam inicializadas
+  // 2. Garante que as 20 posições da estante estejam inicializadas
   const allLocations = await getOrSeedLocations()
 
   return (

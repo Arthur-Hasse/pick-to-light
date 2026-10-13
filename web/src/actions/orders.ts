@@ -46,25 +46,38 @@ export async function pickItem(orderItemId: string) {
       data: { picked: true }
     })
 
-    const allItems = item.order.items
-    const allPicked = allItems.every(i => i.id === orderItemId ? true : i.picked)
+    // Busca a ordem fresca do banco para conferir se todos os itens estão concluídos
+    const freshOrder = await prisma.order.findUnique({
+      where: { id: item.orderId },
+      include: { items: true }
+    })
+
+    const allItems = freshOrder?.items || []
+    const allPicked = allItems.length > 0 && allItems.every(i => i.picked)
 
     if (allPicked) {
       await prisma.order.update({
         where: { id: item.orderId },
-        data: { status: 'COMPLETED' }
+        data: { 
+          status: 'COMPLETED',
+          updatedAt: new Date()
+        }
       })
-    } else if (item.order.status === 'PENDING') {
+    } else {
       await prisma.order.update({
         where: { id: item.orderId },
-        data: { status: 'IN_PROGRESS' }
+        data: { 
+          status: 'IN_PROGRESS',
+          updatedAt: new Date()
+        }
       })
     }
 
     revalidatePath(`/operator/order/${item.orderId}`)
     revalidatePath('/operator')
+    revalidatePath('/admin/orders')
     revalidatePath('/admin')
-    return { success: true }
+    return { success: true, allPicked }
   } catch (error) {
     return { error: 'Erro ao confirmar retirada' }
   }
@@ -78,7 +91,7 @@ export async function resetOrder(orderId: string) {
     })
     await prisma.order.update({
       where: { id: orderId },
-      data: { status: 'PENDING' }
+      data: { status: 'PENDING', updatedAt: new Date() }
     })
 
     revalidatePath(`/operator/order/${orderId}`)
