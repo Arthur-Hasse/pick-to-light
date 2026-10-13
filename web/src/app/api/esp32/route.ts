@@ -9,6 +9,7 @@ let activeBoxState: { [key: number]: boolean } = {
   3: false,
 }
 let lastButtonPressed: number | null = null
+let buttonPressCount: number = 0
 let currentOrderId: string | null = null
 let lastEspHeartbeat: number = 0
 
@@ -106,6 +107,7 @@ export async function GET(req: NextRequest) {
     activeBoxState,
     activeBox: currentActiveBox,
     lastButtonPressed,
+    buttonPressCount,
     currentOrderId,
     espOnline: isEspOnline
   }, {
@@ -124,6 +126,25 @@ export async function POST(req: NextRequest) {
     // 0. Painel web notifica qual ordem está aberta na tela do operador
     if (action === 'set_active_order') {
       currentOrderId = orderId || null
+      if (orderId) {
+        try {
+          const ord = await prisma.order.findUnique({ where: { id: orderId } })
+          if (ord && ord.status !== 'COMPLETED') {
+            await prisma.order.updateMany({
+              where: { status: 'IN_PROGRESS', id: { not: orderId } },
+              data: { status: 'PENDING' }
+            })
+            if (ord.status !== 'IN_PROGRESS') {
+              await prisma.order.update({
+                where: { id: orderId },
+                data: { status: 'IN_PROGRESS', updatedAt: new Date() }
+              })
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao ativar ordem no set_active_order:', e)
+        }
+      }
       return NextResponse.json({ success: true, currentOrderId })
     }
 
@@ -148,6 +169,7 @@ export async function POST(req: NextRequest) {
     if (action === 'button_pressed') {
       const pressedBox = parseInt(box, 10)
       lastButtonPressed = pressedBox
+      buttonPressCount++
       activeBoxState[pressedBox] = false // Desliga o LED após o clique
       lastEspHeartbeat = Date.now()
 

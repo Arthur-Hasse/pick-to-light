@@ -190,16 +190,24 @@ export default function ActiveOrderTerminal({
   const handleButtonPressPick = async (item: OrderItemType) => {
     if (item.picked) return
     setLoadingItemId(item.id)
-    const res = await pickItem(item.id)
-    if (res?.success) {
-      router.refresh()
+    try {
+      const res = await pickItem(item.id)
+      if (res?.success) {
+        router.refresh()
+      } else if (res?.error) {
+        alert(res.error)
+      }
+    } catch (err: any) {
+      console.error('Erro ao registrar retirada:', err)
+      alert('Erro na comunicação com o servidor ao confirmar item.')
+    } finally {
+      setLoadingItemId(null)
     }
-    setLoadingItemId(null)
   }
 
   // Monitora o status do ESP32 e eventos de botão físico (Nuvem ou Local)
   useEffect(() => {
-    let lastHandledBtn: number | null = null
+    let lastHandledCount = -1
 
     const timer = setInterval(async () => {
       try {
@@ -221,9 +229,11 @@ export default function ActiveOrderTerminal({
             setEspActiveBox(data.activeBox)
           }
 
-          // Se um botão foi registrado pelo backend, atualiza o pedido
-          if (data.lastButtonPressed && data.lastButtonPressed !== lastHandledBtn) {
-            lastHandledBtn = data.lastButtonPressed
+          // Inicializa o contador no primeiro tick para não atualizar à toa ao carregar a página
+          if (lastHandledCount === -1) {
+            lastHandledCount = typeof data.buttonPressCount === 'number' ? data.buttonPressCount : 0
+          } else if (typeof data.buttonPressCount === 'number' && data.buttonPressCount > lastHandledCount) {
+            lastHandledCount = data.buttonPressCount
             router.refresh()
           }
         }
@@ -280,23 +290,39 @@ export default function ActiveOrderTerminal({
   const handleConfirmScalePick = async () => {
     if (!activeScaleItem || !scaleFeedback?.valid) return
     setLoadingItemId(activeScaleItem.id)
-    const res = await pickItem(activeScaleItem.id)
-    if (res?.success) {
-      router.refresh()
+    try {
+      const res = await pickItem(activeScaleItem.id)
+      if (res?.success) {
+        router.refresh()
+      } else if (res?.error) {
+        alert(res.error)
+      }
+    } catch (err: any) {
+      console.error('Erro ao confirmar pesagem:', err)
+      alert('Erro na comunicação com o servidor ao confirmar pesagem.')
+    } finally {
+      setActiveScaleItem(null)
+      setLoadingItemId(null)
     }
-    setActiveScaleItem(null)
-    setLoadingItemId(null)
   }
 
   // Reset order for re-demonstrations
   const handleResetOrder = async () => {
     if (!confirm('Deseja reiniciar a coleta deste pedido para testar novamente?')) return
     setResetting(true)
-    const res = await resetOrder(order.id)
-    if (res?.success) {
-      router.refresh()
+    try {
+      const res = await resetOrder(order.id)
+      if (res?.success) {
+        router.refresh()
+      } else if (res?.error) {
+        alert(res.error)
+      }
+    } catch (err: any) {
+      console.error('Erro ao reiniciar ordem:', err)
+      alert('Erro ao tentar reiniciar a ordem de serviço.')
+    } finally {
+      setResetting(false)
     }
-    setResetting(false)
   }
 
   return (
@@ -820,7 +846,7 @@ export default function ActiveOrderTerminal({
             <div className="bg-[#181D2D] p-3.5 rounded-xl border border-[#263148] space-y-1 mb-4 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-400">Peça a Separar:</span>
-                <strong className="text-white font-bold">{activeScaleItem.product.name}</strong>
+                <strong className="text-white font-bold">{activeScaleItem.product?.name || 'Peça'}</strong>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Quantidade Solicitada:</span>
@@ -829,13 +855,13 @@ export default function ActiveOrderTerminal({
               <div className="flex justify-between">
                 <span className="text-slate-400">Peso Unitário Cadastrado:</span>
                 <strong className="text-slate-300 font-mono">
-                  {parseProductMeta(activeScaleItem.product.description).weightGrams} g
+                  {parseProductMeta(activeScaleItem.product?.description).weightGrams} g
                 </strong>
               </div>
               <div className="flex justify-between pt-1 border-t border-[#232C42]">
                 <span className="text-slate-300 font-semibold">Peso Total Esperado:</span>
                 <strong className="text-emerald-400 font-mono font-bold text-sm">
-                  {(activeScaleItem.quantity * parseProductMeta(activeScaleItem.product.description).weightGrams).toFixed(1)} g
+                  {(activeScaleItem.quantity * parseProductMeta(activeScaleItem.product?.description).weightGrams).toFixed(1)} g
                 </strong>
               </div>
             </div>

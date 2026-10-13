@@ -142,9 +142,9 @@ export default async function OperatorDashboard() {
                       <span className="font-semibold text-slate-300 block mb-1">Itens inclusos:</span>
                       {order.items.slice(0, 3).map((item: any) => (
                         <div key={item.id} className="flex items-center justify-between text-slate-400">
-                          <span className="truncate max-w-[180px]">{item.product.name}</span>
+                          <span className="truncate max-w-[180px]">{item.product?.name || 'Peça'}</span>
                           <span className="font-mono text-slate-500">
-                            {item.quantity} un · {item.product.location ? `${item.product.location.section}-${item.product.location.shelf}-${item.product.location.box}` : ''}
+                            {item.quantity} un · {item.product?.location ? `${item.product.location.section}-${item.product.location.shelf}-${item.product.location.box}` : ''}
                           </span>
                         </div>
                       ))}
