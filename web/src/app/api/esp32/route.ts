@@ -90,18 +90,51 @@ export async function GET(req: NextRequest) {
       espOnline: true
     }, {
       headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       }
     })
   }
 
-  // Consulta vinda da interface web para saber o status geral
+  // Consulta vinda da interface web para saber o status geral e do pedido aberto
   const isEspOnline = (Date.now() - lastEspHeartbeat) < 10000
   let currentActiveBox = 0
   if (activeBoxState[1]) currentActiveBox = 1
   else if (activeBoxState[2]) currentActiveBox = 2
   else if (activeBoxState[3]) currentActiveBox = 3
+
+  const orderIdParam = searchParams.get('orderId') || currentOrderId
+  let orderData = null
+
+  if (orderIdParam) {
+    try {
+      const dbOrder = await prisma.order.findUnique({
+        where: { id: orderIdParam },
+        select: {
+          id: true,
+          status: true,
+          items: {
+            select: { id: true, picked: true },
+            orderBy: { createdAt: 'asc' }
+          }
+        }
+      })
+      if (dbOrder) {
+        const allItemsPicked = dbOrder.items.length > 0 && dbOrder.items.every(i => i.picked)
+        orderData = {
+          orderId: dbOrder.id,
+          status: dbOrder.status,
+          isCompleted: dbOrder.status === 'COMPLETED' || allItemsPicked,
+          items: dbOrder.items.map(i => ({ id: i.id, picked: i.picked }))
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao buscar status da ordem no GET /api/esp32:', e)
+    }
+  }
 
   return NextResponse.json({
     activeBoxState,
@@ -109,9 +142,13 @@ export async function GET(req: NextRequest) {
     lastButtonPressed,
     buttonPressCount,
     currentOrderId,
-    espOnline: isEspOnline
+    espOnline: isEspOnline,
+    order: orderData
   }, {
     headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     }

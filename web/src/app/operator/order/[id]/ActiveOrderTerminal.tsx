@@ -62,6 +62,15 @@ export default function ActiveOrderTerminal({
   const [measuredWeight, setMeasuredWeight] = useState<string>('')
   const [scaleFeedback, setScaleFeedback] = useState<{ valid: boolean; message: string } | null>(null)
 
+  // Items and Status state for immediate reactive updates without router cache delays
+  const [items, setItems] = useState<OrderItemType[]>(order.items)
+  const [orderStatus, setOrderStatus] = useState<string>(order.status)
+
+  useEffect(() => {
+    setItems(order.items)
+    setOrderStatus(order.status)
+  }, [order.items, order.status])
+
   // Map locations for the shelf matrix (Shelves 1..5, Boxes 1..4)
   const locationMap: Record<string, LocationType> = {}
   allLocations.forEach(loc => {
@@ -70,17 +79,17 @@ export default function ActiveOrderTerminal({
 
   // Map order items by location: shelf-box -> item
   const orderItemsByLocation: Record<string, OrderItemType> = {}
-  order.items.forEach(item => {
+  items.forEach(item => {
     if (item.product?.location) {
       const key = `${item.product.location.shelf}-${item.product.location.box}`
       orderItemsByLocation[key] = item
     }
   })
 
-  const totalItems = order.items.length
-  const pickedCount = order.items.filter(i => i.picked).length
+  const totalItems = items.length
+  const pickedCount = items.filter(i => i.picked).length
   const pendingCount = totalItems - pickedCount
-  const isCompleted = pickedCount === totalItems && totalItems > 0
+  const isCompleted = (pickedCount === totalItems && totalItems > 0) || orderStatus === 'COMPLETED'
 
   // 1. Registra a ordem atual na API da nuvem ao abrir a tela
   useEffect(() => {
@@ -170,10 +179,14 @@ export default function ActiveOrderTerminal({
   }
 
   // Sincronização automática do próximo item pendente com o LED do ESP32
-  const pendingItems = order.items.filter(i => !i.picked)
+  const pendingItems = items.filter(i => !i.picked)
   const nextItem = pendingItems[0]
 
   useEffect(() => {
+    if (isCompleted) {
+      clearEspLeds()
+      return
+    }
     if (nextItem?.product?.location) {
       const box = parseInt(nextItem.product.location.box, 10)
       if (box >= 1 && box <= 3) {
@@ -184,22 +197,30 @@ export default function ActiveOrderTerminal({
     } else {
       clearEspLeds()
     }
-  }, [nextItem?.id, pendingItems.length])
+  }, [nextItem?.id, pendingItems.length, isCompleted])
 
   // Action for Mode 1 (Arthur): Physical/Virtual Button press on Pick to Light rack
   const handleButtonPressPick = async (item: OrderItemType) => {
     if (item.picked) return
     setLoadingItemId(item.id)
+    // Atualização otimista imediata na interface
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, picked: true } : i))
     try {
       const res = await pickItem(item.id)
       if (res?.success) {
+        if (res.allPicked) {
+          setOrderStatus('COMPLETED')
+          setEspActiveBox(null)
+        }
         router.refresh()
       } else if (res?.error) {
         alert(res.error)
+        router.refresh()
       }
     } catch (err: any) {
       console.error('Erro ao registrar retirada:', err)
       alert('Erro na comunicação com o servidor ao confirmar item.')
+      router.refresh()
     } finally {
       setLoadingItemId(null)
     }
@@ -211,8 +232,11 @@ export default function ActiveOrderTerminal({
 
     const timer = setInterval(async () => {
       try {
-        // Consulta o status na Nuvem (Vercel)
-        const res = await fetch('/api/esp32', { signal: AbortSignal.timeout(2000) })
+        // Consulta o status na Nuvem com cache desabilitado e status do pedido
+        const res = await fetch(`/api/esp32?orderId=${order.id}&_t=${Date.now()}`, { 
+          cache: 'no-store',
+          signal: AbortSignal.timeout(2000) 
+        })
         if (res.ok) {
           const data = await res.json()
 
@@ -225,8 +249,27 @@ export default function ActiveOrderTerminal({
             setEspMessage('Aguardando ESP32 conectar ao Wi-Fi...')
           }
 
-          if (data.activeBox && data.activeBox >= 1 && data.activeBox <= 3) {
-            setEspActiveBox(data.activeBox)
+          if (typeof data.activeBox === 'number') {
+            if (data.activeBox >= 1 && data.activeBox <= 3) {
+              setEspActiveBox(data.activeBox)
+            } else {
+              setEspActiveBox(null)
+            }
+          }
+
+          // Se a API retornou o estado do banco atualizado para este pedido
+          if (data.order) {
+            if (data.order.items) {
+              setItems(prev => prev.map(item => {
+                const dbItem = data.order.items.find((di: any) => di.id === item.id)
+                return dbItem ? { ...item, picked: dbItem.picked } : item
+              }))
+            }
+
+            if (data.order.isCompleted || data.order.status === 'COMPLETED') {
+              setOrderStatus('COMPLETED')
+              setEspActiveBox(null)
+            }
           }
 
           // Inicializa o contador no primeiro tick para não atualizar à toa ao carregar a página
@@ -289,17 +332,25 @@ export default function ActiveOrderTerminal({
   // Confirm scale pick
   const handleConfirmScalePick = async () => {
     if (!activeScaleItem || !scaleFeedback?.valid) return
-    setLoadingItemId(activeScaleItem.id)
+    const targetItemId = activeScaleItem.id
+    setLoadingItemId(targetItemId)
+    setItems(prev => prev.map(i => i.id === targetItemId ? { ...i, picked: true } : i))
     try {
-      const res = await pickItem(activeScaleItem.id)
+      const res = await pickItem(targetItemId)
       if (res?.success) {
+        if (res.allPicked) {
+          setOrderStatus('COMPLETED')
+          setEspActiveBox(null)
+        }
         router.refresh()
       } else if (res?.error) {
         alert(res.error)
+        router.refresh()
       }
     } catch (err: any) {
       console.error('Erro ao confirmar pesagem:', err)
       alert('Erro na comunicação com o servidor ao confirmar pesagem.')
+      router.refresh()
     } finally {
       setActiveScaleItem(null)
       setLoadingItemId(null)
@@ -727,7 +778,7 @@ export default function ActiveOrderTerminal({
             </h2>
 
             <div className="divide-y divide-[#20273A] space-y-3">
-              {order.items.map(item => {
+              {items.map(item => {
                 const meta = parseProductMeta(item.product?.description)
                 const expectedWeight = item.quantity * meta.weightGrams
 
